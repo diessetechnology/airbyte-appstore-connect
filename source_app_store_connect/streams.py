@@ -3,7 +3,9 @@ from __future__ import annotations
 import csv
 import datetime
 import gzip
+import hashlib
 import io
+import json
 import urllib.parse
 from typing import Any, Iterable, Iterator, List, Mapping, MutableMapping, Optional
 
@@ -34,6 +36,11 @@ def _maybe_decompress_gzip(payload: bytes) -> bytes:
     if payload[:2] == b"\x1f\x8b":
         return gzip.decompress(payload)
     return payload
+
+
+def _stable_record_pk(payload: Mapping[str, Any]) -> str:
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
 
 
 class AppStoreConnectStream(HttpStream):
@@ -206,7 +213,7 @@ class Builds(AppStoreConnectStream):
 
 class SalesReports(AppStoreConnectStream):
     name = "sales_reports"
-    primary_key = None
+    primary_key = "_ab_pk"
 
     def stream_slices(
         self,
@@ -276,7 +283,7 @@ class SalesReports(AppStoreConnectStream):
         if isinstance(stream_slice, Mapping):
             report_date = stream_slice.get("report_date")
 
-        for row in reader:
+        for row_index, row in enumerate(reader):
             if not row:
                 continue
             if not any((v or "").strip() for v in row.values()):
@@ -287,6 +294,17 @@ class SalesReports(AppStoreConnectStream):
             out["_meta_report_type"] = str(self._config.get("sales_report_type") or "SALES").upper()
             out["_meta_report_sub_type"] = str(self._config.get("sales_report_sub_type") or "SUMMARY").upper()
             out["_meta_report_date"] = report_date
+            out["_ab_pk"] = _stable_record_pk(
+                {
+                    "row_index": row_index,
+                    "report_date": report_date,
+                    "vendor_number": out["_meta_vendor_number"],
+                    "frequency": out["_meta_frequency"],
+                    "report_type": out["_meta_report_type"],
+                    "report_sub_type": out["_meta_report_sub_type"],
+                    "row": row,
+                }
+            )
             yield out
 
 
@@ -425,7 +443,7 @@ class AnalyticsReportSegments(AppStoreConnectStream):
 
 class AnalyticsReportSegmentRows(AppStoreConnectStream):
     name = "analytics_report_rows"
-    primary_key = None
+    primary_key = "_ab_pk"
 
     def path(self, **kwargs) -> str:
         return ""
@@ -515,7 +533,7 @@ class AnalyticsReportSegmentRows(AppStoreConnectStream):
                                     continue
                                 segment_id = str(segment.get("id"))
 
-                                for row in self._download_and_parse_segment_csv(url):
+                                for row_index, row in enumerate(self._download_and_parse_segment_csv(url)):
                                     out = dict(row)
                                     out["_meta_app_id"] = app_id
                                     out["_meta_access_type"] = access_type
@@ -527,6 +545,20 @@ class AnalyticsReportSegmentRows(AppStoreConnectStream):
                                     out["_meta_processing_date"] = processing_date
                                     out["_meta_granularity"] = granularity
                                     out["_meta_segment_id"] = segment_id
+                                    out["_ab_pk"] = _stable_record_pk(
+                                        {
+                                            "row_index": row_index,
+                                            "app_id": app_id,
+                                            "access_type": access_type,
+                                            "request_id": request_id,
+                                            "report_id": report_id,
+                                            "instance_id": instance_id,
+                                            "segment_id": segment_id,
+                                            "processing_date": processing_date,
+                                            "granularity": granularity,
+                                            "row": row,
+                                        }
+                                    )
                                     yield out
 
     def _get_or_create_analytics_request_id(self, app_id: str, access_type: str, auto_create: bool) -> Optional[str]:
