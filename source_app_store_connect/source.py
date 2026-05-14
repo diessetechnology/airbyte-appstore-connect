@@ -9,7 +9,17 @@ from airbyte_cdk.sources.streams import Stream
 from airbyte_cdk.models import ConnectorSpecification
 from airbyte_protocol.models import SyncMode
 
-from source_app_store_connect.streams import AppStoreVersions, Apps, Builds
+from source_app_store_connect.streams import (
+    AnalyticsReportInstances,
+    AnalyticsReportRequests,
+    AnalyticsReportSegmentRows,
+    AnalyticsReportSegments,
+    AnalyticsReports,
+    AppStoreVersions,
+    Apps,
+    Builds,
+    SalesReports,
+)
 
 
 class SourceAppStoreConnect(AbstractSource):
@@ -28,4 +38,14 @@ class SourceAppStoreConnect(AbstractSource):
             return False, str(e)
 
     def streams(self, config: Mapping[str, Any]) -> List[Stream]:
-        return [Apps(config), AppStoreVersions(config), Builds(config)]
+        return [
+            Apps(config),
+            AppStoreVersions(config),
+            Builds(config),
+            SalesReports(config),
+            AnalyticsReportRequests(config),
+            AnalyticsReports(config),
+            AnalyticsReportInstances(config),
+            AnalyticsReportSegments(config),
+            AnalyticsReportSegmentRows(config),
+        ]

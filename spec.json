@@ -36,6 +36,84 @@
         "maximum": 200,
         "default": 200,
         "description": "Numero massimo di record per pagina (limit)."
+      },
+      "vendor_number": {
+        "title": "Vendor Number (Sales & Trends)",
+        "type": "string",
+        "description": "Vendor number per scaricare Sales and Trends reports (filter[vendorNumber])."
+      },
+      "sales_frequency": {
+        "title": "Sales frequency",
+        "type": "string",
+        "default": "DAILY",
+        "description": "Valore per filter[frequency] in /v1/salesReports (DAILY, WEEKLY, MONTHLY, YEARLY)."
+      },
+      "sales_report_type": {
+        "title": "Sales reportType",
+        "type": "string",
+        "default": "SALES",
+        "description": "Valore per filter[reportType] in /v1/salesReports (es. SALES, SUBSCRIPTION, INSTALLS, ...)."
+      },
+      "sales_report_sub_type": {
+        "title": "Sales reportSubType",
+        "type": "string",
+        "default": "SUMMARY",
+        "description": "Valore per filter[reportSubType] in /v1/salesReports (es. SUMMARY, DETAILED, ...)."
+      },
+      "sales_version": {
+        "title": "Sales version",
+        "type": "string",
+        "description": "Valore per filter[version] in /v1/salesReports (opzionale)."
+      },
+      "sales_start_date": {
+        "title": "Sales start date",
+        "type": "string",
+        "description": "Data iniziale (YYYY-MM-DD) per scaricare i report DAILY."
+      },
+      "sales_end_date": {
+        "title": "Sales end date",
+        "type": "string",
+        "description": "Data finale (YYYY-MM-DD) per scaricare i report DAILY."
+      },
+      "analytics_access_type": {
+        "title": "Analytics accessType",
+        "type": "string",
+        "default": "ONGOING",
+        "description": "Tipo di richiesta Analytics (ONGOING o ONE_TIME_SNAPSHOT)."
+      },
+      "analytics_auto_create_requests": {
+        "title": "Analytics auto-create requests",
+        "type": "boolean",
+        "default": true,
+        "description": "Se true e non esiste una Analytics Report Request per l'app, prova a crearla (richiede ruolo Admin)."
+      },
+      "analytics_categories": {
+        "title": "Analytics categories (opzionale)",
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Filtro per filter[category] (APP_USAGE, APP_STORE_ENGAGEMENT, COMMERCE, FRAMEWORK_USAGE, PERFORMANCE)."
+      },
+      "analytics_report_names": {
+        "title": "Analytics report names (opzionale)",
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Filtro per filter[name] (esatto) su /v1/analyticsReportRequests/{id}/reports."
+      },
+      "analytics_granularity": {
+        "title": "Analytics granularity",
+        "type": "string",
+        "default": "DAILY",
+        "description": "Filtro per filter[granularity] in /v1/analyticsReports/{id}/instances (DAILY, WEEKLY, MONTHLY)."
+      },
+      "analytics_start_date": {
+        "title": "Analytics start date",
+        "type": "string",
+        "description": "Data iniziale (YYYY-MM-DD) per filtrare processingDate delle istanze."
+      },
+      "analytics_end_date": {
+        "title": "Analytics end date",
+        "type": "string",
+        "description": "Data finale (YYYY-MM-DD) per filtrare processingDate delle istanze."
       }
     }
   }
