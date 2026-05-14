@@ -1,0 +1,42 @@
+{
+  "documentationUrl": "https://developer.apple.com/documentation/appstoreconnectapi",
+  "connectionSpecification": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "App Store Connect Spec",
+    "type": "object",
+    "required": ["issuer_id", "key_id", "private_key"],
+    "additionalProperties": false,
+    "properties": {
+      "issuer_id": {
+        "title": "Issuer ID",
+        "type": "string",
+        "description": "Issuer ID dell'API Key (App Store Connect)."
+      },
+      "key_id": {
+        "title": "Key ID",
+        "type": "string",
+        "description": "Key ID dell'API Key (App Store Connect)."
+      },
+      "private_key": {
+        "title": "Private Key",
+        "type": "string",
+        "description": "Contenuto del file .p8 della API Key. Incollalo così com'è, oppure con \\n al posto dei newline.",
+        "airbyte_secret": true
+      },
+      "app_ids": {
+        "title": "App IDs (opzionale)",
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Lista di App ID per limitare gli stream dipendenti dalle app. Se vuoto/non presente, vengono lette tutte le app disponibili."
+      },
+      "limit": {
+        "title": "Page size",
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 200,
+        "description": "Numero massimo di record per pagina (limit)."
+      }
+    }
+  }
+}
