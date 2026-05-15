@@ -43,6 +43,20 @@ def _stable_record_pk(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _raise_for_status_with_details(response) -> None:
+    if 200 <= response.status_code < 300:
+        return
+    content_type = response.headers.get("Content-Type", "")
+    if "application/json" in content_type:
+        try:
+            detail = response.json()
+        except Exception:
+            detail = response.text
+    else:
+        detail = response.text
+    raise RuntimeError(f"App Store Connect API error {response.status_code}: {detail}")
+
+
 class AppStoreConnectStream(HttpStream):
     url_base = "https://api.appstoreconnect.apple.com/v1/"
     primary_key = "id"
@@ -84,6 +98,7 @@ class AppStoreConnectStream(HttpStream):
         return params
 
     def next_page_token(self, response, **kwargs) -> Optional[Mapping[str, Any]]:
+        _raise_for_status_with_details(response)
         body = response.json()
         next_link = (body.get("links") or {}).get("next")
         if not next_link:
@@ -97,6 +112,7 @@ class AppStoreConnectStream(HttpStream):
         return {"cursor": cursor_values[0]}
 
     def parse_response(self, response, **kwargs) -> Iterable[Mapping[str, Any]]:
+        _raise_for_status_with_details(response)
         body = response.json()
         for record in body.get("data", []) or []:
             yield record
@@ -274,6 +290,7 @@ class SalesReports(AppStoreConnectStream):
         return params
 
     def parse_response(self, response, **kwargs) -> Iterable[Mapping[str, Any]]:
+        _raise_for_status_with_details(response)
         payload = _maybe_decompress_gzip(response.content)
         text = payload.decode("utf-8-sig", errors="replace")
         reader = csv.DictReader(io.StringIO(text), delimiter="\t")
