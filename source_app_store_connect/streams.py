@@ -155,6 +155,8 @@ class AppStoreConnectStream(HttpStream):
             headers=headers,
             timeout=60,
         )
+        if response.status_code == 404:
+            return {"data": [], "links": {}}
         response.raise_for_status()
         return response.json()
 
@@ -294,6 +296,27 @@ class Builds(AppStoreConnectStream):
 class SalesReports(AppStoreConnectStream):
     name = "sales_reports"
     primary_key = "_ab_pk"
+
+    def read_records(
+        self,
+        sync_mode,
+        cursor_field: Optional[List[str]] = None,
+        stream_slice: Optional[Mapping[str, Any]] = None,
+        stream_state: Optional[Mapping[str, Any]] = None,
+    ) -> Iterable[Mapping[str, Any]]:
+        url = urllib.parse.urljoin(self.url_base, "salesReports")
+
+        for slice_ in self.stream_slices(sync_mode=sync_mode, cursor_field=cursor_field, stream_state=stream_state):
+            params = self.request_params(stream_state=stream_state or {}, stream_slice=slice_, next_page_token=None)
+            headers = {"Authorization": f"Bearer {self._auth.token()}", "Accept": "application/a-gzip"}
+
+            response = self._raw_session.get(url, params=params, headers=headers, timeout=120)
+            if response.status_code == 404:
+                continue
+            if not (200 <= response.status_code < 300):
+                _raise_for_status_with_details(response)
+
+            yield from self.parse_response(response, stream_slice=slice_)
 
     def stream_slices(
         self,
@@ -726,6 +749,8 @@ class AnalyticsReportSegmentRows(AppStoreConnectStream):
 
     def _download_and_parse_segment_csv(self, url: str) -> Iterable[Mapping[str, Any]]:
         response = self._raw_session.get(url, timeout=120)
+        if response.status_code == 404:
+            return []
         response.raise_for_status()
         payload = _maybe_decompress_gzip(response.content)
         text = payload.decode("utf-8-sig", errors="replace")
