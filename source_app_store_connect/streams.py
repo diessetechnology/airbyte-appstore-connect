@@ -118,7 +118,7 @@ class AppStoreConnectStream(HttpStream):
             yield record
 
     def get_json_schema(self) -> Mapping[str, Any]:
-        return {"type": "object", "additionalProperties": True}
+        return {"type": "object", "properties": {}, "additionalProperties": True}
 
     def _request_json(
         self,
