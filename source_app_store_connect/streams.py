@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import io
 import json
+import re
 import urllib.parse
 from typing import Any, Iterable, Iterator, List, Mapping, MutableMapping, Optional
 
@@ -48,6 +49,12 @@ def _maybe_decompress_gzip(payload: bytes) -> bytes:
 def _stable_record_pk(payload: Mapping[str, Any]) -> str:
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
+
+
+def _normalize_key(name: str) -> str:
+    value = re.sub(r"[^0-9A-Za-z]+", "_", name.strip()).strip("_").lower()
+    value = re.sub(r"_+", "_", value)
+    return value or "field"
 
 
 def _raise_for_status_with_details(response) -> None:
@@ -392,12 +399,44 @@ class SalesReports(AppStoreConnectStream):
                 continue
             if not any((v or "").strip() for v in row.values()):
                 continue
-            out = dict(row)
+            row_norm = {_normalize_key(k): v for k, v in row.items()}
+            out: dict[str, Any] = {"row": row_norm}
             out["_meta_vendor_number"] = str(self._config.get("vendor_number"))
             out["_meta_frequency"] = str(self._config.get("sales_frequency") or "DAILY").upper()
             out["_meta_report_type"] = str(self._config.get("sales_report_type") or "SALES").upper()
             out["_meta_report_sub_type"] = str(self._config.get("sales_report_sub_type") or "SUMMARY").upper()
             out["_meta_report_date"] = report_date
+            for key in (
+                "provider",
+                "provider_country",
+                "sku",
+                "developer",
+                "title",
+                "version",
+                "product_type_identifier",
+                "units",
+                "developer_proceeds",
+                "begin_date",
+                "end_date",
+                "customer_currency",
+                "country_code",
+                "currency_of_proceeds",
+                "apple_identifier",
+                "customer_price",
+                "promo_code",
+                "parent_identifier",
+                "subscription_period",
+                "category",
+                "cmb",
+                "device",
+                "supported_platforms",
+                "proceeds_reason",
+                "preserved_pricing",
+                "client",
+                "order_type",
+            ):
+                if key in row_norm:
+                    out[key] = row_norm.get(key)
             out["_ab_pk"] = _stable_record_pk(
                 {
                     "row_index": row_index,
@@ -406,7 +445,7 @@ class SalesReports(AppStoreConnectStream):
                     "frequency": out["_meta_frequency"],
                     "report_type": out["_meta_report_type"],
                     "report_sub_type": out["_meta_report_sub_type"],
-                    "row": row,
+                    "row": row_norm,
                 }
             )
             yield out
@@ -416,6 +455,34 @@ class SalesReports(AppStoreConnectStream):
             "type": "object",
             "properties": {
                 "_ab_pk": {"type": "string"},
+                "row": {"type": ["object", "null"], "additionalProperties": True},
+                "provider": {"type": ["string", "null"]},
+                "provider_country": {"type": ["string", "null"]},
+                "sku": {"type": ["string", "null"]},
+                "developer": {"type": ["string", "null"]},
+                "title": {"type": ["string", "null"]},
+                "version": {"type": ["string", "null"]},
+                "product_type_identifier": {"type": ["string", "null"]},
+                "units": {"type": ["string", "null"]},
+                "developer_proceeds": {"type": ["string", "null"]},
+                "begin_date": {"type": ["string", "null"]},
+                "end_date": {"type": ["string", "null"]},
+                "customer_currency": {"type": ["string", "null"]},
+                "country_code": {"type": ["string", "null"]},
+                "currency_of_proceeds": {"type": ["string", "null"]},
+                "apple_identifier": {"type": ["string", "null"]},
+                "customer_price": {"type": ["string", "null"]},
+                "promo_code": {"type": ["string", "null"]},
+                "parent_identifier": {"type": ["string", "null"]},
+                "subscription_period": {"type": ["string", "null"]},
+                "category": {"type": ["string", "null"]},
+                "cmb": {"type": ["string", "null"]},
+                "device": {"type": ["string", "null"]},
+                "supported_platforms": {"type": ["string", "null"]},
+                "proceeds_reason": {"type": ["string", "null"]},
+                "preserved_pricing": {"type": ["string", "null"]},
+                "client": {"type": ["string", "null"]},
+                "order_type": {"type": ["string", "null"]},
                 "_meta_vendor_number": {"type": ["string", "null"]},
                 "_meta_frequency": {"type": ["string", "null"]},
                 "_meta_report_type": {"type": ["string", "null"]},
@@ -701,7 +768,8 @@ class AnalyticsReportSegmentRows(AppStoreConnectStream):
                                 segment_id = str(segment.get("id"))
 
                                 for row_index, row in enumerate(self._download_and_parse_segment_csv(url)):
-                                    out = dict(row)
+                                    row_norm = {_normalize_key(k): v for k, v in row.items()}
+                                    out: dict[str, Any] = {"row": row_norm}
                                     out["_meta_app_id"] = app_id
                                     out["_meta_access_type"] = access_type
                                     out["_meta_request_id"] = request_id
@@ -723,7 +791,7 @@ class AnalyticsReportSegmentRows(AppStoreConnectStream):
                                             "segment_id": segment_id,
                                             "processing_date": processing_date,
                                             "granularity": granularity,
-                                            "row": row,
+                                            "row": row_norm,
                                         }
                                     )
                                     yield out
@@ -733,6 +801,7 @@ class AnalyticsReportSegmentRows(AppStoreConnectStream):
             "type": "object",
             "properties": {
                 "_ab_pk": {"type": "string"},
+                "row": {"type": ["object", "null"], "additionalProperties": True},
                 "_meta_app_id": {"type": ["string", "null"]},
                 "_meta_access_type": {"type": ["string", "null"]},
                 "_meta_request_id": {"type": ["string", "null"]},
