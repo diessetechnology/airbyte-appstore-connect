@@ -18,7 +18,14 @@ from source_app_store_connect.auth import AppStoreConnectAuth
 
 
 def _parse_yyyy_mm_dd(value: str) -> datetime.date:
-    return datetime.date.fromisoformat(value)
+    raw = value.strip()
+    if not raw:
+        raise ValueError("Empty date")
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    if "T" in raw:
+        return datetime.datetime.fromisoformat(raw).date()
+    return datetime.date.fromisoformat(raw)
 
 
 def _today_utc() -> datetime.date:
@@ -180,6 +187,53 @@ class AppStoreConnectStream(HttpStream):
             app_id = record.get("id")
             if app_id:
                 yield str(app_id)
+
+    def _get_or_create_analytics_request_id(self, app_id: str, access_type: str, auto_create: bool) -> Optional[str]:
+        params = {"filter[accessType]": access_type, "limit": 200}
+        existing = list(self._iter_json_data(f"apps/{app_id}/analyticsReportRequests", params))
+        if existing:
+            request_id = existing[0].get("id")
+            return str(request_id) if request_id else None
+
+        if not auto_create:
+            return None
+
+        body = {
+            "data": {
+                "type": "analyticsReportRequests",
+                "attributes": {"accessType": access_type},
+                "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
+            }
+        }
+        created = self._request_json("POST", "analyticsReportRequests", json_body=body)
+        created_id = (created.get("data") or {}).get("id") if isinstance(created.get("data"), Mapping) else None
+        return str(created_id) if created_id else None
+
+    def _iter_analytics_report_ids(self) -> Iterable[str]:
+        access_type = str(self._config.get("analytics_access_type") or "ONGOING").upper()
+        categories = [str(x) for x in (self._config.get("analytics_categories") or []) if x]
+        names = [str(x) for x in (self._config.get("analytics_report_names") or []) if x]
+        category_values = categories if categories else [None]
+        name_values = names if names else [None]
+        auto_create = bool(self._config.get("analytics_auto_create_requests", True))
+
+        for app_id in self._iter_app_ids():
+            request_id = self._get_or_create_analytics_request_id(app_id, access_type, auto_create)
+            if not request_id:
+                continue
+
+            for category in category_values:
+                for name in name_values:
+                    report_params: MutableMapping[str, Any] = {"limit": 200}
+                    if category:
+                        report_params["filter[category]"] = category
+                    if name:
+                        report_params["filter[name]"] = name
+
+                    for report in self._iter_json_data(f"analyticsReportRequests/{request_id}/reports", report_params):
+                        report_id_value = report.get("id")
+                        if report_id_value:
+                            yield str(report_id_value)
 
     @staticmethod
     def _build_auth(config: Mapping[str, Any]) -> AppStoreConnectAuth:
@@ -435,17 +489,12 @@ class AnalyticsReportInstances(AppStoreConnectStream):
         cursor_field: Optional[list[str]] = None,
         stream_state: Optional[Mapping[str, Any]] = None,
     ) -> Iterable[Mapping[str, Any]]:
-        access_type = str(self._config.get("analytics_access_type") or "ONGOING").upper()
-        reports = AnalyticsReports(self._config)
-        seen: set[str] = set()
-        for report in reports.read_records(sync_mode=SyncMode.full_refresh):
-            report_id = report.get("id")
-            if report_id:
-                report_id_str = str(report_id)
-                if report_id_str in seen:
-                    continue
-                seen.add(report_id_str)
-                yield {"report_id": report_id_str, "access_type": access_type}
+        seen_reports: set[str] = set()
+        for report_id in self._iter_analytics_report_ids():
+            if report_id in seen_reports:
+                continue
+            seen_reports.add(report_id)
+            yield {"report_id": report_id}
 
     def path(self, stream_slice: Mapping[str, Any] = None, **kwargs) -> str:
         return f"analyticsReports/{stream_slice['report_id']}/instances"
@@ -462,6 +511,32 @@ class AnalyticsReportInstances(AppStoreConnectStream):
             params["filter[granularity]"] = str(granularity).upper()
         return params
 
+    def parse_response(self, response, **kwargs) -> Iterable[Mapping[str, Any]]:
+        _raise_for_status_with_details(response)
+        start_date_raw = self._config.get("analytics_start_date")
+        end_date_raw = self._config.get("analytics_end_date")
+        if end_date_raw:
+            end_date = _parse_yyyy_mm_dd(str(end_date_raw))
+        else:
+            end_date = _today_utc()
+        if start_date_raw:
+            start_date = _parse_yyyy_mm_dd(str(start_date_raw))
+        else:
+            start_date = end_date - datetime.timedelta(days=7)
+
+        body = response.json()
+        for record in body.get("data", []) or []:
+            attrs = record.get("attributes") if isinstance(record.get("attributes"), Mapping) else {}
+            processing_date = attrs.get("processingDate")
+            if processing_date:
+                try:
+                    pd = _parse_yyyy_mm_dd(str(processing_date))
+                except Exception:
+                    pd = None
+                if pd and (pd < start_date or pd > end_date):
+                    continue
+            yield record
+
 
 class AnalyticsReportSegments(AppStoreConnectStream):
     name = "analytics_report_segments"
@@ -472,11 +547,39 @@ class AnalyticsReportSegments(AppStoreConnectStream):
         cursor_field: Optional[list[str]] = None,
         stream_state: Optional[Mapping[str, Any]] = None,
     ) -> Iterable[Mapping[str, Any]]:
-        instances = AnalyticsReportInstances(self._config)
-        for instance in instances.read_records(sync_mode=SyncMode.full_refresh):
-            instance_id = instance.get("id")
-            if instance_id:
-                yield {"instance_id": str(instance_id)}
+        granularity = str(self._config.get("analytics_granularity") or "DAILY").upper()
+        start_date_raw = self._config.get("analytics_start_date")
+        end_date_raw = self._config.get("analytics_end_date")
+        if end_date_raw:
+            end_date = _parse_yyyy_mm_dd(str(end_date_raw))
+        else:
+            end_date = _today_utc()
+        if start_date_raw:
+            start_date = _parse_yyyy_mm_dd(str(start_date_raw))
+        else:
+            start_date = end_date - datetime.timedelta(days=7)
+
+        seen_instances: set[str] = set()
+        for report_id in self._iter_analytics_report_ids():
+            instances_params: MutableMapping[str, Any] = {"limit": 200, "filter[granularity]": granularity}
+            for instance in self._iter_json_data(f"analyticsReports/{report_id}/instances", instances_params):
+                attrs = instance.get("attributes") if isinstance(instance.get("attributes"), Mapping) else {}
+                processing_date = attrs.get("processingDate")
+                if processing_date:
+                    try:
+                        pd = _parse_yyyy_mm_dd(str(processing_date))
+                    except Exception:
+                        pd = None
+                    if pd and (pd < start_date or pd > end_date):
+                        continue
+                instance_id = instance.get("id")
+                if not instance_id:
+                    continue
+                instance_id_str = str(instance_id)
+                if instance_id_str in seen_instances:
+                    continue
+                seen_instances.add(instance_id_str)
+                yield {"instance_id": instance_id_str}
 
     def path(self, stream_slice: Mapping[str, Any] = None, **kwargs) -> str:
         return f"analyticsReportInstances/{stream_slice['instance_id']}/segments"
@@ -620,27 +723,6 @@ class AnalyticsReportSegmentRows(AppStoreConnectStream):
             },
             "additionalProperties": True,
         }
-
-    def _get_or_create_analytics_request_id(self, app_id: str, access_type: str, auto_create: bool) -> Optional[str]:
-        params = {"filter[accessType]": access_type, "limit": 200}
-        existing = list(self._iter_json_data(f"apps/{app_id}/analyticsReportRequests", params))
-        if existing:
-            request_id = existing[0].get("id")
-            return str(request_id) if request_id else None
-
-        if not auto_create:
-            return None
-
-        body = {
-            "data": {
-                "type": "analyticsReportRequests",
-                "attributes": {"accessType": access_type},
-                "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
-            }
-        }
-        created = self._request_json("POST", "analyticsReportRequests", json_body=body)
-        created_id = (created.get("data") or {}).get("id") if isinstance(created.get("data"), Mapping) else None
-        return str(created_id) if created_id else None
 
     def _download_and_parse_segment_csv(self, url: str) -> Iterable[Mapping[str, Any]]:
         response = self._raw_session.get(url, timeout=120)
