@@ -118,7 +118,17 @@ class AppStoreConnectStream(HttpStream):
             yield record
 
     def get_json_schema(self) -> Mapping[str, Any]:
-        return {"type": "object", "properties": {}, "additionalProperties": True}
+        return {
+            "type": "object",
+            "properties": {
+                "id": {"type": ["string", "null"]},
+                "type": {"type": ["string", "null"]},
+                "attributes": {"type": ["object", "null"], "additionalProperties": True},
+                "relationships": {"type": ["object", "null"], "additionalProperties": True},
+                "links": {"type": ["object", "null"], "additionalProperties": True},
+            },
+            "additionalProperties": True,
+        }
 
     def _request_json(
         self,
@@ -323,6 +333,20 @@ class SalesReports(AppStoreConnectStream):
                 }
             )
             yield out
+
+    def get_json_schema(self) -> Mapping[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "_ab_pk": {"type": "string"},
+                "_meta_vendor_number": {"type": ["string", "null"]},
+                "_meta_frequency": {"type": ["string", "null"]},
+                "_meta_report_type": {"type": ["string", "null"]},
+                "_meta_report_sub_type": {"type": ["string", "null"]},
+                "_meta_report_date": {"type": ["string", "null"]},
+            },
+            "additionalProperties": True,
+        }
 
 
 class AnalyticsReportRequests(AppStoreConnectStream):
@@ -577,6 +601,25 @@ class AnalyticsReportSegmentRows(AppStoreConnectStream):
                                         }
                                     )
                                     yield out
+
+    def get_json_schema(self) -> Mapping[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "_ab_pk": {"type": "string"},
+                "_meta_app_id": {"type": ["string", "null"]},
+                "_meta_access_type": {"type": ["string", "null"]},
+                "_meta_request_id": {"type": ["string", "null"]},
+                "_meta_report_id": {"type": ["string", "null"]},
+                "_meta_report_name": {"type": ["string", "null"]},
+                "_meta_report_category": {"type": ["string", "null"]},
+                "_meta_instance_id": {"type": ["string", "null"]},
+                "_meta_processing_date": {"type": ["string", "null"]},
+                "_meta_granularity": {"type": ["string", "null"]},
+                "_meta_segment_id": {"type": ["string", "null"]},
+            },
+            "additionalProperties": True,
+        }
 
     def _get_or_create_analytics_request_id(self, app_id: str, access_type: str, auto_create: bool) -> Optional[str]:
         params = {"filter[accessType]": access_type, "limit": 200}
